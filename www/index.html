@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Photo Measure</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--tx:#eef1f6;--mu:#8b93a5;--ac:#3ddc97;--ac2:#ffb020;--bad:#ff6b6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;padding:max(14px,env(safe-area-inset-top)) 14px max(24px,env(safe-area-inset-bottom))}
+h1{font-size:20px;margin:4px 0 12px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,.btn{font:inherit;color:var(--tx);background:#232834;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer}
+button.pri,.btn.pri{background:var(--ac);color:#06281a;border-color:var(--ac);font-weight:600}
+button.on{border-color:var(--ac);color:var(--ac)}
+button:disabled{opacity:.4}
+.chips button{padding:7px 11px;font-size:14px;border-radius:99px}
+input[type=number],input[type=text]{font:inherit;color:var(--tx);background:#10131a;border:1px solid var(--line);border-radius:10px;padding:10px;width:110px}
+input[type=text]{width:140px}
+#wrap{position:relative;display:flex;justify-content:center;background:#000;border-radius:10px;overflow:hidden}
+canvas{display:block;touch-action:none}
+.hint{color:var(--mu);font-size:14px}
+.list .it{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.list .it:first-child{border-top:0}
+.val{font-variant-numeric:tabular-nums;font-weight:600}
+.x{padding:4px 10px;color:var(--bad)}
+.hide{display:none}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;border:1px solid var(--line);padding:10px 14px;border-radius:10px;font-size:14px;opacity:0;transition:.2s;pointer-events:none}
+#toast.show{opacity:1}
+.d{color:var(--mu);font-size:13px}
+.up{color:var(--ac)}.dn{color:var(--ac2)}
+textarea{width:100%;background:#10131a;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:8px;font:13px monospace;height:90px}
+</style>
+</head>
+<body>
+<h1>📏 Photo Measure</h1>
+
+<div class="card" id="s1">
+  <h2>1 · Photo</h2>
+  <div class="row">
+    <label class="btn pri">Take photo<input id="cam" type="file" accept="image/*" capture="environment" hidden></label>
+    <label class="btn">Choose from library<input id="lib" type="file" accept="image/*" hidden></label>
+  </div>
+  <p class="hint" style="margin:10px 0 0">For body shots: camera at chest height, 6–8 ft away, straight-on, same spot and distance each time. Keep the camera level and the reference (your height or a ruler) at the same distance as what you measure.</p>
+</div>
+
+<div class="card hide" id="s2">
+  <div class="row" style="justify-content:space-between;margin-bottom:8px">
+    <div class="row" id="modes">
+      <button id="mScale" class="on">① Set scale</button>
+      <button id="mMeasure">② Measure</button>
+    </div>
+    <div class="row">
+      <button id="uIn" class="on">in</button><button id="uCm">cm</button>
+    </div>
+  </div>
+
+  <div id="scalePanel">
+    <div class="row" style="margin-bottom:8px">
+      <span class="hint">Known length:</span>
+      <input id="refLen" type="number" inputmode="decimal" step="0.1" value="73">
+      <span id="refUnit" class="hint">in</span>
+      <button id="refH" class="on" title="Tap top of head and bottom of feet">My height</button>
+      <button id="refO">Other object</button>
+    </div>
+    <p class="hint" id="scaleHint" style="margin:0 0 8px">Tap the top of your head, then the bottom of your feet. Drag a dot to fine-tune.</p>
+  </div>
+
+  <div id="measurePanel" class="hide">
+    <div class="row chips" id="chips" style="margin-bottom:8px"></div>
+    <div class="row" style="margin-bottom:8px">
+      <input id="custom" type="text" placeholder="Custom label">
+      <button id="addCustom">Use</button>
+    </div>
+    <p class="hint" style="margin:0 0 8px">Pick a label, then tap two points. Drag any dot to adjust; a magnifier appears while you drag.</p>
+  </div>
+
+  <div id="wrap"><canvas id="cv"></canvas></div>
+  <div class="row" style="margin-top:10px">
+    <button id="undo">Undo</button>
+    <button id="clear">Clear measurements</button>
+    <button id="newPhoto">New photo</button>
+  </div>
+</div>
+
+<div class="card hide" id="s3">
+  <h2>Measurements</h2>
+  <div class="list" id="list"></div>
+  <div class="row" style="margin-top:10px">
+    <button class="pri" id="save">Save to history</button>
+    <button id="copy">Copy</button>
+  </div>
+  <textarea id="copyBox" class="hide" readonly></textarea>
+  <p class="hint" style="margin:10px 0 0">These are straight-line widths in the photo plane, not circumference. Compare like with like (same pose, distance, lighting) over time.</p>
+</div>
+
+<div class="card" id="s4">
+  <h2>History</h2>
+  <div id="hist" class="list"><span class="hint">Nothing saved yet.</span></div>
+  <div class="row" style="margin-top:10px"><button id="wipe" class="hide">Delete history</button></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+const LABELS=['Shoulders','Chest','Waist','Hips','Upper arm','Thigh'];
+let img=null,s=1,unit='in',mode='scale',refType='height',label='Waist';
+let ref={a:null,b:null};        // reference segment (image px)
+let segs=[];                    // {label,a,b}
+let drag=null,mag=null;
+
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2200)}
+const F=()=>unit==='in'?2.54:1;
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function refCm(){const v=parseFloat($('refLen').value);return v>0?v*F():0}
+function pxPerCm(){return ref.a&&ref.b&&refCm()?dist(ref.a,ref.b)/refCm():0}
+function cmOf(seg){const p=pxPerCm();return p&&seg.b?dist(seg.a,seg.b)/p:null}
+function fmt(cm){return unit==='in'?(cm/2.54).toFixed(1)+' in':cm.toFixed(1)+' cm'}
+
+// ---- load photo
+function load(f){
+  if(!f)return;
+  const u=URL.createObjectURL(f),im=new Image();
+  im.onload=()=>{
+    // downscale big phone photos for speed
+    const m=1800,r=Math.min(1,m/Math.max(im.width,im.height));
+    const c=document.createElement('canvas');c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    img=c;URL.revokeObjectURL(u);
+    ref={a:null,b:null};segs=[];
+    $('s1').classList.add('hide');$('s2').classList.remove('hide');
+    setMode('scale');layout();render();
+  };
+  im.onerror=()=>toast('Could not open that image');
+  im.src=u;
+}
+$('cam').onchange=e=>load(e.target.files[0]);
+$('lib').onchange=e=>load(e.target.files[0]);
+$('newPhoto').onclick=()=>{img=null;$('s1').classList.remove('hide');$('s2').classList.add('hide');$('s3').classList.add('hide');$('cam').value='';$('lib').value=''};
+
+// ---- layout/draw
+function layout(){
+  if(!img)return;
+  const w=$('s2').clientWidth-24, maxH=Math.max(320,innerHeight*0.62);
+  s=Math.min(w/img.width,maxH/img.height);
+  const dpr=window.devicePixelRatio||1,cw=img.width*s,ch=img.height*s;
+  cv.style.width=cw+'px';cv.style.height=ch+'px';
+  cv.width=Math.round(cw*dpr);cv.height=Math.round(ch*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener('resize',()=>{layout();render()});
+
+function dot(p,col){
+  ctx.beginPath();ctx.arc(p.x*s,p.y*s,9,0,7);ctx.fillStyle=col+'33';ctx.fill();
+  ctx.lineWidth=2;ctx.strokeStyle=col;ctx.stroke();
+  ctx.beginPath();ctx.arc(p.x*s,p.y*s,2,0,7);ctx.fillStyle=col;ctx.fill();
+}
+function line(a,b,col,txt){
+  if(a&&b){ctx.beginPath();ctx.moveTo(a.x*s,a.y*s);ctx.lineTo(b.x*s,b.y*s);ctx.lineWidth=2;ctx.strokeStyle=col;ctx.stroke()}
+  if(a)dot(a,col);if(b)dot(b,col);
+  if(a&&b&&txt){
+    const mx=(a.x+b.x)/2*s,my=(a.y+b.y)/2*s;
+    ctx.font='600 13px system-ui';const w=ctx.measureText(txt).width+12;
+    ctx.fillStyle='#000c';ctx.fillRect(mx-w/2,my-11,w,22);
+    ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,mx,my);
+  }
+}
+function render(){
+  if(!img)return;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.drawImage(img,0,0,img.width*s,img.height*s);
+  line(ref.a,ref.b,'#ffb020',ref.b&&refCm()?'Scale '+fmt(refCm()):'Scale');
+  segs.forEach(g=>{const c=cmOf(g);line(g.a,g.b,'#3ddc97',g.b?g.label+(c?' '+fmt(c):''):null)});
+  if(mag)drawMag();
+  renderList();
+}
+function drawMag(){
+  const R=48,z=3,p=mag;
+  let cx=p.x*s,cy=p.y*s-R-40; if(cy<R+4)cy=p.y*s+R+40;
+  cx=Math.max(R+4,Math.min(cv.clientWidth-R-4,cx));
+  ctx.save();ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.clip();
+  ctx.fillStyle='#000';ctx.fillRect(cx-R,cy-R,2*R,2*R);
+  const sw=2*R/z/s; // source width in image px
+  ctx.drawImage(img,p.x-sw/2,p.y-sw/2,sw,sw,cx-R,cy-R,2*R,2*R);
+  ctx.restore();
+  ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke();
+  ctx.strokeStyle='#ff3b3b';ctx.lineWidth=1;ctx.beginPath();
+  ctx.moveTo(cx-10,cy);ctx.lineTo(cx+10,cy);ctx.moveTo(cx,cy-10);ctx.lineTo(cx,cy+10);ctx.stroke();
+}
+
+// ---- pointer handling
+function pos(e){const r=cv.getBoundingClientRect();return{x:Math.max(0,Math.min(img.width,(e.clientX-r.left)/s)),y:Math.max(0,Math.min(img.height,(e.clientY-r.top)/s))}}
+function hit(p){
+  let best=null,bd=26/s;
+  const test=(pt,set)=>{if(!pt)return;const d=dist(pt,p);if(d<bd){bd=d;best=set}};
+  test(ref.a,q=>ref.a=q);test(ref.b,q=>ref.b=q);
+  segs.forEach(g=>{test(g.a,q=>g.a=q);test(g.b,q=>g.b=q)});
+  return best;
+}
+cv.addEventListener('pointerdown',e=>{
+  if(!img)return;e.preventDefault();cv.setPointerCapture(e.pointerId);
+  const p=pos(e);let set=hit(p);
+  if(!set){
+    if(mode==='scale'){
+      if(!ref.a){ref.a=p;set=q=>ref.a=q}
+      else if(!ref.b){ref.b=p;set=q=>ref.b=q}
+    }else{
+      if(!pxPerCm()){toast('Set the scale first');return}
+      const open=segs[segs.length-1];
+      if(open&&!open.b){open.b=p;set=q=>open.b=q}
+      else{const g={label,a:p,b:null};segs.push(g);set=q=>g.a=q}
+    }
+  }
+  if(set){drag=set;set(p);mag=p;render()}
+});
+cv.addEventListener('pointermove',e=>{if(!drag)return;e.preventDefault();const p=pos(e);drag(p);mag=p;render()});
+function up(){
+  if(!drag)return;drag=null;mag=null;
+  if(mode==='scale'&&ref.a&&ref.b&&pxPerCm()){setMode('measure');toast('Scale set — now measure')}
+  render();
+}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+
+// ---- UI
+function setMode(m){
+  mode=m;
+  $('mScale').classList.toggle('on',m==='scale');$('mMeasure').classList.toggle('on',m==='measure');
+  $('scalePanel').classList.toggle('hide',m!=='scale');$('measurePanel').classList.toggle('hide',m!=='measure');
+}
+$('mScale').onclick=()=>setMode('scale');
+$('mMeasure').onclick=()=>{if(!pxPerCm())toast('Place both scale points and enter a length first');else setMode('measure')};
+function setRef(t){
+  refType=t;$('refH').classList.toggle('on',t==='height');$('refO').classList.toggle('on',t==='obj');
+  if(t==='height'){$('refLen').value=unit==='in'?73:185;$('scaleHint').textContent='Tap the top of your head, then the bottom of your feet. Enter your real height above.'}
+  else{$('refLen').value=unit==='in'?12:30;$('scaleHint').textContent='Place a ruler or known object (e.g. a 12 in ruler) at the same distance. Tap each end and enter its length.'}
+  render();
+}
+$('refH').onclick=()=>setRef('height');$('refO').onclick=()=>setRef('obj');
+$('refLen').oninput=render;
+function setUnit(u){
+  if(u===unit)return;
+  const cm=refCm();unit=u;
+  $('uIn').classList.toggle('on',u==='in');$('uCm').classList.toggle('on',u==='cm');
+  $('refUnit').textContent=u;
+  if(cm)$('refLen').value=+(cm/F()).toFixed(1);
+  render();histRender();
+}
+$('uIn').onclick=()=>setUnit('in');$('uCm').onclick=()=>setUnit('cm');
+
+function chips(){
+  const c=$('chips');c.innerHTML='';
+  [...new Set([...LABELS,label])].forEach(l=>{
+    const b=document.createElement('button');b.textContent=l;b.className=l===label?'on':'';
+    b.onclick=()=>{label=l;chips()};c.appendChild(b);
+  });
+}
+$('addCustom').onclick=()=>{const v=$('custom').value.trim();if(v){label=v.slice(0,24);$('custom').value='';chips()}};
+chips();
+
+$('undo').onclick=()=>{
+  if(segs.length){const g=segs[segs.length-1];if(g.b)g.b=null;else segs.pop();if(g.b===null&&!segs.includes(g)){}}
+  else if(ref.b)ref.b=null;else ref.a=null;
+  // if last seg lost both points
+  segs=segs.filter(g=>g.a);render();
+};
+$('clear').onclick=()=>{segs=[];render()};
+
+function done(){return segs.filter(g=>g.b&&cmOf(g)!=null)}
+function renderList(){
+  const d=done(),L=$('list');
+  $('s3').classList.toggle('hide',!d.length);
+  L.innerHTML='';
+  d.forEach(g=>{
+    const r=document.createElement('div');r.className='it';
+    r.innerHTML='<span></span><span><span class="val"></span> <button class="x">✕</button></span>';
+    r.children[0].textContent=g.label;r.querySelector('.val').textContent=fmt(cmOf(g));
+    r.querySelector('.x').onclick=()=>{segs.splice(segs.indexOf(g),1);render()};
+    L.appendChild(r);
+  });
+}
+function summary(){return done().map(g=>g.label+': '+fmt(cmOf(g))).join('\n')}
+$('copy').onclick=async()=>{
+  const t=new Date().toLocaleDateString()+'\n'+summary();
+  try{await navigator.clipboard.writeText(t);toast('Copied')}
+  catch(e){const b=$('copyBox');b.value=t;b.classList.remove('hide');b.select();toast('Select and copy the text')}
+};
+
+// ---- history (this browser only)
+function getH(){try{return JSON.parse(localStorage.getItem('pm_hist')||'[]')}catch(e){return[]}}
+function setH(h){try{localStorage.setItem('pm_hist',JSON.stringify(h));return true}catch(e){return false}}
+$('save').onclick=()=>{
+  const vals={};done().forEach(g=>vals[g.label]=+cmOf(g).toFixed(2));
+  if(!Object.keys(vals).length)return;
+  const h=getH();h.push({t:Date.now(),vals});
+  toast(setH(h)?'Saved':'Could not save in this browser');histRender();
+};
+function histRender(){
+  const h=getH(),el=$('hist');
+  $('wipe').classList.toggle('hide',!h.length);
+  if(!h.length){el.innerHTML='<span class="hint">Nothing saved yet. History stays in this browser only.</span>';return}
+  el.innerHTML='';
+  h.slice().reverse().forEach((e,i,arr)=>{
+    const idx=h.length-1-i,prev=h[idx-1];
+    const r=document.createElement('div');r.className='it';r.style.display='block';
+    const hd=document.createElement('div');hd.className='d';hd.textContent=new Date(e.t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    r.appendChild(hd);
+    Object.entries(e.vals).forEach(([k,v])=>{
+      const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between';
+      let delta='';
+      if(prev&&prev.vals[k]!=null){const dv=(v-prev.vals[k])/F();if(Math.abs(dv)>=0.05)delta=` <span class="${dv<0?'dn':'up'}">${dv>0?'+':''}${dv.toFixed(1)}</span>`}
+      row.innerHTML='<span></span><span class="val"></span>';
+      row.children[0].textContent=k;row.children[1].innerHTML=fmt(v)+delta;
+      r.appendChild(row);
+    });
+    el.appendChild(r);
+  });
+}
+$('wipe').onclick=()=>{if($('wipe').dataset.c){setH([]);delete $('wipe').dataset.c;$('wipe').textContent='Delete history';histRender()}else{$('wipe').dataset.c=1;$('wipe').textContent='Tap again to confirm';setTimeout(()=>{delete $('wipe').dataset.c;$('wipe').textContent='Delete history'},3000)}};
+histRender();
+})();
+</script>
+</body>
+</html>
