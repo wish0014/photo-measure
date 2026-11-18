@@ -32,11 +32,25 @@ canvas{display:block;touch-action:none}
 .d{color:var(--mu);font-size:13px}
 .up{color:var(--ac)}.dn{color:var(--ac2)}
 textarea{width:100%;background:#10131a;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:8px;font:13px monospace;height:90px}
+
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+#tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#12151bf2;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:5}
+#tabs button{flex:1;border:0;border-radius:0;background:none;color:var(--mu);padding:9px 2px 8px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+#tabs button span{font-size:20px;line-height:1}
+#tabs button.on{color:var(--ac)}
+.thumb{width:64px;height:84px;object-fit:cover;border-radius:8px;background:#000;flex:none}
+.hrow{display:flex;gap:12px}
+.hrow .body{flex:1;min-width:0}
+select{font:inherit;color:var(--tx);background:#10131a;border:1px solid var(--line);border-radius:10px;padding:10px}
+.cmp{display:flex;gap:8px}.cmp figure{margin:0;flex:1;text-align:center}.cmp img{width:100%;border-radius:10px;background:#000}
+.cmp figcaption{font-size:12px;color:var(--mu);margin-top:4px}
+svg text{fill:#8b93a5;font-size:10px}
 </style>
 </head>
 <body>
 <h1>📏 Photo Measure</h1>
 
+<div id="scr-measure">
 <div class="card" id="s1">
   <h2>1 · Photo</h2>
   <div class="row">
@@ -51,9 +65,6 @@ textarea{width:100%;background:#10131a;color:var(--tx);border:1px solid var(--li
     <div class="row" id="modes">
       <button id="mScale" class="on">① Set scale</button>
       <button id="mMeasure">② Measure</button>
-    </div>
-    <div class="row">
-      <button id="uIn" class="on">in</button><button id="uCm">cm</button>
     </div>
   </div>
 
@@ -96,11 +107,51 @@ textarea{width:100%;background:#10131a;color:var(--tx);border:1px solid var(--li
   <p class="hint" style="margin:10px 0 0">These are straight-line widths in the photo plane, not circumference. Compare like with like (same pose, distance, lighting) over time.</p>
 </div>
 
-<div class="card" id="s4">
-  <h2>History</h2>
-  <div id="hist" class="list"><span class="hint">Nothing saved yet.</span></div>
-  <div class="row" style="margin-top:10px"><button id="wipe" class="hide">Delete history</button></div>
 </div>
+
+<div id="scr-history" class="hide">
+  <div class="card">
+    <h2>History</h2>
+    <div id="hist" class="list"></div>
+  </div>
+</div>
+
+<div id="scr-progress" class="hide">
+  <div class="card">
+    <h2>Progress</h2>
+    <div class="row" style="margin-bottom:8px"><select id="pSel"></select></div>
+    <div id="chart"></div>
+    <div id="pSum" class="hint" style="margin-top:6px"></div>
+  </div>
+  <div class="card">
+    <h2>First vs latest photo</h2>
+    <div id="cmp" class="cmp"><span class="hint">Save at least one session with a photo.</span></div>
+  </div>
+</div>
+
+<div id="scr-settings" class="hide">
+  <div class="card">
+    <h2>Units</h2>
+    <div class="row"><button id="uIn" class="on">Inches</button><button id="uCm">Centimeters</button></div>
+  </div>
+  <div class="card">
+    <h2>My height</h2>
+    <div class="row"><input id="setH" type="number" inputmode="decimal" step="0.1"><span id="setHU" class="hint">in</span><button id="setHSave" class="pri">Save</button></div>
+    <p class="hint" style="margin:8px 0 0">Pre-fills the scale step when you use your height as the reference.</p>
+  </div>
+  <div class="card">
+    <h2>Data</h2>
+    <p class="hint" style="margin:0 0 8px">Everything is stored only on this phone.</p>
+    <button id="wipe">Delete all history</button>
+  </div>
+</div>
+
+<nav id="tabs">
+  <button data-t="measure" class="on"><span>📷</span>Measure</button>
+  <button data-t="history"><span>🗂</span>History</button>
+  <button data-t="progress"><span>📈</span>Progress</button>
+  <button data-t="settings"><span>⚙️</span>Settings</button>
+</nav>
 
 <div id="toast"></div>
 
@@ -236,7 +287,7 @@ $('mScale').onclick=()=>setMode('scale');
 $('mMeasure').onclick=()=>{if(!pxPerCm())toast('Place both scale points and enter a length first');else setMode('measure')};
 function setRef(t){
   refType=t;$('refH').classList.toggle('on',t==='height');$('refO').classList.toggle('on',t==='obj');
-  if(t==='height'){$('refLen').value=unit==='in'?73:185;$('scaleHint').textContent='Tap the top of your head, then the bottom of your feet. Enter your real height above.'}
+  if(t==='height'){$('refLen').value=+(set.heightCm/F()).toFixed(1);$('scaleHint').textContent='Tap the top of your head, then the bottom of your feet. Enter your real height above.'}
   else{$('refLen').value=unit==='in'?12:30;$('scaleHint').textContent='Place a ruler or known object (e.g. a 12 in ruler) at the same distance. Tap each end and enter its length.'}
   render();
 }
@@ -245,12 +296,9 @@ $('refLen').oninput=render;
 function setUnit(u){
   if(u===unit)return;
   const cm=refCm();unit=u;
-  $('uIn').classList.toggle('on',u==='in');$('uCm').classList.toggle('on',u==='cm');
-  $('refUnit').textContent=u;
   if(cm)$('refLen').value=+(cm/F()).toFixed(1);
-  render();histRender();
+  render();
 }
-$('uIn').onclick=()=>setUnit('in');$('uCm').onclick=()=>setUnit('cm');
 
 function chips(){
   const c=$('chips');c.innerHTML='';
@@ -290,38 +338,112 @@ $('copy').onclick=async()=>{
   catch(e){const b=$('copyBox');b.value=t;b.classList.remove('hide');b.select();toast('Select and copy the text')}
 };
 
-// ---- history (this browser only)
+// ---- storage
 function getH(){try{return JSON.parse(localStorage.getItem('pm_hist')||'[]')}catch(e){return[]}}
 function setH(h){try{localStorage.setItem('pm_hist',JSON.stringify(h));return true}catch(e){return false}}
+let set={unit:'in',heightCm:185.4};
+try{Object.assign(set,JSON.parse(localStorage.getItem('pm_set')||'{}'))}catch(e){}
+function saveSet(){try{localStorage.setItem('pm_set',JSON.stringify(set))}catch(e){}}
+function thumb(){
+  if(!img)return null;
+  const w=240,r=w/img.width,c=document.createElement('canvas');c.width=w;c.height=Math.round(img.height*r);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  try{return c.toDataURL('image/jpeg',.6)}catch(e){return null}
+}
 $('save').onclick=()=>{
   const vals={};done().forEach(g=>vals[g.label]=+cmOf(g).toFixed(2));
   if(!Object.keys(vals).length)return;
-  const h=getH();h.push({t:Date.now(),vals});
-  toast(setH(h)?'Saved':'Could not save in this browser');histRender();
+  const h=getH();h.push({t:Date.now(),vals,img:thumb()});
+  if(!setH(h)){h.forEach(e=>{});h[h.length-1].img=null;toast(setH(h)?'Saved (photo too large to keep)':'Could not save in this browser')}
+  else toast('Saved to History');
+  histRender();progRender();
 };
+
+// ---- history screen
 function histRender(){
   const h=getH(),el=$('hist');
-  $('wipe').classList.toggle('hide',!h.length);
-  if(!h.length){el.innerHTML='<span class="hint">Nothing saved yet. History stays in this browser only.</span>';return}
+  if(!h.length){el.innerHTML='<span class="hint">Nothing saved yet. Take a photo on the Measure tab and tap Save.</span>';return}
   el.innerHTML='';
-  h.slice().reverse().forEach((e,i,arr)=>{
+  h.slice().reverse().forEach((e,i)=>{
     const idx=h.length-1-i,prev=h[idx-1];
     const r=document.createElement('div');r.className='it';r.style.display='block';
-    const hd=document.createElement('div');hd.className='d';hd.textContent=new Date(e.t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-    r.appendChild(hd);
+    const wrapr=document.createElement('div');wrapr.className='hrow';
+    if(e.img){const im=document.createElement('img');im.className='thumb';im.src=e.img;wrapr.appendChild(im)}
+    const body=document.createElement('div');body.className='body';
+    const top=document.createElement('div');top.style.cssText='display:flex;justify-content:space-between;align-items:center';
+    const hd=document.createElement('div');hd.className='d';hd.textContent=new Date(e.t).toLocaleString([], {weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const del=document.createElement('button');del.className='x';del.textContent='✕';
+    del.onclick=()=>{if(del.dataset.c){const hh=getH();hh.splice(idx,1);setH(hh);histRender();progRender()}else{del.dataset.c=1;del.textContent='Delete?';setTimeout(()=>{del.dataset.c='';del.textContent='✕'},2500)}};
+    top.appendChild(hd);top.appendChild(del);body.appendChild(top);
     Object.entries(e.vals).forEach(([k,v])=>{
       const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between';
       let delta='';
       if(prev&&prev.vals[k]!=null){const dv=(v-prev.vals[k])/F();if(Math.abs(dv)>=0.05)delta=` <span class="${dv<0?'dn':'up'}">${dv>0?'+':''}${dv.toFixed(1)}</span>`}
       row.innerHTML='<span></span><span class="val"></span>';
       row.children[0].textContent=k;row.children[1].innerHTML=fmt(v)+delta;
-      r.appendChild(row);
+      body.appendChild(row);
     });
-    el.appendChild(r);
+    wrapr.appendChild(body);r.appendChild(wrapr);el.appendChild(r);
   });
 }
-$('wipe').onclick=()=>{if($('wipe').dataset.c){setH([]);delete $('wipe').dataset.c;$('wipe').textContent='Delete history';histRender()}else{$('wipe').dataset.c=1;$('wipe').textContent='Tap again to confirm';setTimeout(()=>{delete $('wipe').dataset.c;$('wipe').textContent='Delete history'},3000)}};
-histRender();
+
+// ---- progress screen
+function progRender(){
+  const h=getH(),sel=$('pSel'),keep=sel.value;
+  const labs=[...new Set(h.flatMap(e=>Object.keys(e.vals)))];
+  sel.innerHTML='';labs.forEach(l=>{const o=document.createElement('option');o.textContent=l;sel.appendChild(o)});
+  if(labs.includes(keep))sel.value=keep;
+  const pts=h.filter(e=>e.vals[sel.value]!=null).map(e=>({t:e.t,v:e.vals[sel.value]/F()}));
+  const ch=$('chart');
+  if(pts.length<1){ch.innerHTML='<span class="hint">Save measurements to see a chart.</span>';$('pSum').textContent=''}
+  else{
+    const W=320,H=170,pl=34,pr=10,pt=10,pb=22;
+    let lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v));
+    if(hi-lo<0.5){lo-=0.5;hi+=0.5}const pad=(hi-lo)*.15;lo-=pad;hi+=pad;
+    const X=i=>pts.length===1?(pl+W-pr)/2:pl+i*(W-pl-pr)/(pts.length-1);
+    const Y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
+    let g='';
+    for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3,y=Y(v);g+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="#2a2f3a"/><text x="${pl-4}" y="${y+3}" text-anchor="end">${v.toFixed(1)}</text>`}
+    const path=pts.map((p,i)=>(i?'L':'M')+X(i)+' '+Y(p.v)).join(' ');
+    const d=t=>new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});
+    ch.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${sel.value} over time">${g}<path d="${path}" fill="none" stroke="#3ddc97" stroke-width="2"/>${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.v)}" r="3.5" fill="#3ddc97"/>`).join('')}<text x="${pl}" y="${H-6}">${d(pts[0].t)}</text><text x="${W-pr}" y="${H-6}" text-anchor="end">${d(pts[pts.length-1].t)}</text></svg>`;
+    const dv=pts[pts.length-1].v-pts[0].v,u=unit;
+    $('pSum').textContent=pts.length>1?`${sel.value}: ${pts[0].v.toFixed(1)} → ${pts[pts.length-1].v.toFixed(1)} ${u} (${dv>0?'+':''}${dv.toFixed(1)} ${u} over ${pts.length} sessions)`:`${sel.value}: ${pts[0].v.toFixed(1)} ${u} (1 session)`;
+  }
+  const withImg=h.filter(e=>e.img),c=$('cmp');
+  if(!withImg.length){c.innerHTML='<span class="hint">Save at least one session with a photo.</span>';return}
+  const a=withImg[0],b=withImg[withImg.length-1];
+  const fig=(e,t)=>`<figure><img src="${e.img}" alt="${t}"><figcaption>${t} · ${new Date(e.t).toLocaleDateString([], {month:'short',day:'numeric'})}</figcaption></figure>`;
+  c.innerHTML=withImg.length>1?fig(a,'First')+fig(b,'Latest'):fig(a,'First');
+}
+$('pSel').onchange=progRender;
+
+// ---- settings screen
+function setUnitUI(){
+  $('uIn').classList.toggle('on',unit==='in');$('uCm').classList.toggle('on',unit==='cm');
+  $('refUnit').textContent=unit;$('setHU').textContent=unit;
+  $('setH').value=+(set.heightCm/F()).toFixed(1);
+}
+$('uIn').onclick=()=>{setUnit('in');set.unit='in';saveSet();setUnitUI();histRender();progRender()};
+$('uCm').onclick=()=>{setUnit('cm');set.unit='cm';saveSet();setUnitUI();histRender();progRender()};
+$('setHSave').onclick=()=>{const v=parseFloat($('setH').value);if(v>0){set.heightCm=v*F();saveSet();toast('Height saved');if(refType==='height'&&!ref.a)setRef('height')}};
+$('wipe').onclick=()=>{if($('wipe').dataset.c){setH([]);delete $('wipe').dataset.c;$('wipe').textContent='Delete all history';histRender();progRender()}else{$('wipe').dataset.c=1;$('wipe').textContent='Tap again to confirm';setTimeout(()=>{delete $('wipe').dataset.c;$('wipe').textContent='Delete all history'},3000)}};
+
+// ---- tabs
+function show(t){
+  ['measure','history','progress','settings'].forEach(n=>$('scr-'+n).classList.toggle('hide',n!==t));
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  if(t==='measure'&&img){layout();render()}
+  if(t==='history')histRender();
+  if(t==='progress')progRender();
+  scrollTo(0,0);
+}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>show(b.dataset.t));
+
+// ---- init from settings
+unit=set.unit==='cm'?'cm':'in';
+setUnitUI();setRef('height');
+histRender();progRender();
 })();
 </script>
 </body>
